@@ -10,7 +10,7 @@ from vispy import app, visuals, scene, use
 from vispy.scene import SceneCanvas
 from vispy.scene.cameras import MagnifyCamera, Magnify1DCamera
 from vispy.color import Colormap
-from super_added_classes import FeatureLineVisual, FeatureXAxis
+from extra_classes import FeatureLineVisual, FeatureXAxis
 
 
 import pandas as pd
