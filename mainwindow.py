@@ -1,6 +1,8 @@
 """
-Demonstrates some customized mouse interaction by drawing a crosshair that follows 
-the mouse.
+Special viewer for Florent - Coma project
+
+
+features values are normalized to improves the view
 
 
 """
@@ -12,9 +14,34 @@ from pyqtgraph.Qt import QtGui, QtCore
 from pyqtgraph.Point import Point
 from os.path import isfile, join
 import pandas as pd
+from PySide.QtCore import QTime
 
-from dialogWindow import DialogWindow
+import datetime as dt
+#seg.anotations['rec_datetime']
+from dialogwindow import DialogWindow
 
+
+
+class DateAxisFeat(pg.AxisItem):
+        def __init__(self, rec_datetime0, sampling_rate, *arg, **kargs):
+            pg.AxisItem.__init__(self, *arg, **kargs)
+            self.rec_datetime0 = rec_datetime0
+            self.sampling_rate = sampling_rate
+            
+        def tickStrings(self, values, scale, spacing):
+            return [(self.rec_datetime0+dt.timedelta(seconds=value/self.sampling_rate)).strftime("%H:%M:%S") for value in values] #strftime   isoformat() 
+
+
+class EEGAxis(pg.AxisItem):
+        def __init__(self, sampling_rate, eegView_win_size, *arg, **kargs):
+            pg.AxisItem.__init__(self, *arg, **kargs)
+            self.sampling_rate = sampling_rate
+            self.eegView_win_size = eegView_win_size
+            
+        def tickStrings(self, values, scale, spacing):
+            return [(value/self.sampling_rate)-self.eegView_win_size/2 for value in values] #strftime   isoformat() 
+
+                #~ return [value/self.sampling_rate for value in values] #strftime   isoformat() 
 
 class MainWindow(QtGui.QWidget):
     
@@ -35,10 +62,11 @@ class MainWindow(QtGui.QWidget):
                 #'features' : ['alpha', 'means', 'entropy',  'kurtosis'],
                 'envir' : ['luxmetre','sonometre'], 
                 'data_repo' : './data/',
-                'fe' : 256, #Hz
-                'featCalc_win_size' : 30, #s
+                'fe' : 256., #Hz
+                'featCalc_win_size' : 30., #s
                 'featCalc_win_overlap' : 1./2,
-                'eegView_win_size' : 30 #s
+                'eegView_win_size' : 30, #s
+                'feat_offset' : 1  # because feat data are normalized
             }
         self.selected = collections.OrderedDict({
                 'subject' : 'P03',
@@ -64,7 +92,7 @@ class MainWindow(QtGui.QWidget):
         self.main_layout = QtGui.QGridLayout()  
         self.main_win.setLayout(self.main_layout)
 
-        ## Graph Properties Optins
+        ## Graph Properties Options
         self.prop_layout = QtGui.QHBoxLayout()
         ## Subject selected
         vb_txt_subject = QtGui.QLabel('Subject selected :')
@@ -88,10 +116,15 @@ class MainWindow(QtGui.QWidget):
         self.gWin = pg.GraphicsWindow()
         #~ self.label = pg.LabelItem(justify='right')
         #~ self.gWin.addItem(self.label)
-        self.eeg_plot = self.gWin.addPlot(row=1, col=0)  #eeg_plot and feat_plot are viewbox
+        axisEEG = EEGAxis(sampling_rate= self.params['fe'], eegView_win_size=self.params['eegView_win_size'], orientation='bottom')
+        self.eeg_plot = self.gWin.addPlot(row=1, col=0, axisItems={'bottom': axisEEG})  #eeg_plot and feat_plot are viewbox
         self.eeg_plot.invertY()
         self.eeg_plot.setMouseEnabled(x=True, y=True)
-        self.feat_plot = self.gWin.addPlot(row=2, col=0)
+        ##axis in date
+        s_rate =  1/(self.params['featCalc_win_size'] * self.params['featCalc_win_overlap'])
+        print "sample_rate : ", 1/self.params['featCalc_win_size']
+        axisFeat = DateAxisFeat(rec_datetime0=dt.datetime.now(), sampling_rate=s_rate, orientation='bottom')
+        self.feat_plot = self.gWin.addPlot(row=2, col=0, axisItems={'bottom': axisFeat})
         self.feat_plot.setMouseEnabled(x=True, y=True)
         self.main_layout.addWidget(self.gWin, 1,0)
                
@@ -141,9 +174,14 @@ class MainWindow(QtGui.QWidget):
         self.feat_plot.clear()
         for j in range(nb_feat):
             data = self.feat_df[self.params['features'][j]][self.selected['subject']][self.selected['feat_chan']].values.reshape((self.nbFeatSamples))
-            self.feat_plot.plot(data, pen=(j, nb_feat*1.3 ))
+            min_feat = min(data)
+            max_feat = np.percentile(data, 90)
+            data =  (data -  max_feat)/(max_feat - min_feat ) + (nb_feat-j)* self.params['feat_offset']
+            print np.shape(data)[0]
+            self.feat_plot.plot(x=range(np.shape(data)[0]), y=data,  pen=(j, nb_feat*1.3 ))
         self.vLine_feat.setValue(self.Feat_Xpos)
         self.feat_plot.addItem(self.vLine_feat, ignoreBounds=True)
+        self.feat_plot.setLimits(yMin=0, yMax=nb_feat+1)
         
     def update_eeg_plots(self):
         print "update EEG plots, self.EEG_Xpos is :", self.EEG_Xpos
