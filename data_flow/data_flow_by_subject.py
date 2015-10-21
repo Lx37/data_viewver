@@ -132,7 +132,7 @@ def micromed_to_pandas(dirname, trc_filename, output_dirname, selected_chan):
         datas = {chan_name:signal.magnitude for chan_name,signal in eeg_signals.items()}
         eeg_raw_df = pd.DataFrame(datas, index=time_axis)
 
-        file_name = patient_name + str(ii)+ '_EEGBrut.h5'
+        file_name = patient_name + '_' + str(ii)+ '_EEGBrut.h5'
         eeg_raw_df.to_hdf(os.path.join(output_dirname, file_name),'eeg_raw_df')
         print patient_name + " " + trc_filename + " micromed EEG data exported to pandaz in " + file_name
         all_eeg_df.append(eeg_raw_df)
@@ -142,7 +142,7 @@ def micromed_to_pandas(dirname, trc_filename, output_dirname, selected_chan):
     if ii>1:
         file_name = patient_name + '_Concat_EEGBrut.h5'
         result = pd.concat(all_eeg_df)        
-        result.to_hdf(os.path.join(output_dirname, file_name),'result')
+        result.to_hdf(os.path.join(output_dirname, file_name),'eeg_raw_df')
         print patient_name + " " + trc_filename + " micromed EEG data concatenated and exported to pandaz in " + file_name
    
     
