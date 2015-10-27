@@ -16,6 +16,11 @@ import numpy as np
 import pandas as pd
 import pyqtgraph as pg
 from pyqtgraph.Qt import QtGui, QtCore
+#from PyQt4.QtCore import *
+#from PyQt4.QtGui import *
+from scipy import signal
+
+from tools import *
 
 
 class Artefact_DialogWindow(QtGui.QDialog):
@@ -25,9 +30,10 @@ class Artefact_DialogWindow(QtGui.QDialog):
         #self.params = params
         #self.optionParams = optionParams
 
+        ## TODO : with Pyqtgraph create the option window nicely
         self.buttonBox = QtGui.QDialogButtonBox(self)
         self.buttonBox.setOrientation(QtCore.Qt.Horizontal)
-        self.resize(500, 800) # (X,Y)
+        self.resize(500, 600) # (X,Y)
         #~ self.buttonBox.setStandardButtons(QtGui.QDialogButtonBox.Cancel|QtGui.QDialogButtonBox.Ok)
         self.title_txt = QtGui.QLabel('General options', self)
         self.title_txt.move(200, 10)
@@ -35,8 +41,8 @@ class Artefact_DialogWindow(QtGui.QDialog):
         self.advice_txt.move(150, 30)
         self.advice_txt.resize(300,30)
 
-        self.verticalLayout = QtGui.QVBoxLayout(self)
-        self.verticalLayout.addWidget(self.buttonBox)
+        # self.verticalLayout = QtGui.QVBoxLayout(self)
+        # self.verticalLayout.addWidget(self.buttonBox)
          
         ## Automated artefact detection 
         self.artf_checkBox = QtGui.QCheckBox('Automatic artefact rejection : ', self)
@@ -73,15 +79,18 @@ class Artefact_DialogWindow(QtGui.QDialog):
         self.win_txt1 = QtGui.QLabel('Size (in sec) of the signal view : ', self)
         self.win_txt1.move(10, 400)
         self.win_txt1.resize(300,30)
-        self.filt_f0_ql = QtGui.QLineEdit(str(self.parent.optionParams['win_size']), self)
-        self.filt_f0_ql.move(250, 400)
-
+        self.win_size_ql = QtGui.QLineEdit(str(self.parent.optionParams['win_size']), self)
+        self.win_size_ql.move(250, 400)
 
         ## Ok button
-        self.OkButton = QtGui.QPushButton("Ok")
-        self.verticalLayout.addWidget(self.OkButton)
+        self.OkButton = QtGui.QPushButton("Ok", self)
+        self.OkButton.move(400, 500)
+        # self.verticalLayout.addWidget(self.OkButton)
         self.connect(self.OkButton, QtCore.SIGNAL("clicked()"), self.parent.on_valid_dialogWindow)
 
+    def keyPressEvent(self, ev):
+        print 'laa'
+        print ev.key()
 
 class date_EEG_axis(pg.AxisItem):
     def __init__(self, dataFrame_index, *arg, **kargs):
@@ -95,17 +104,18 @@ class date_EEG_axis(pg.AxisItem):
     	return [date.strftime("%H:%M:%S") for date in self.dataFrame_index[values]]
 
 
-class Artefact_rejection_viewer(QtGui.QWidget):
+class Artefact_rejection_viewer(ViewerBase):
     
-    def __init__(self):
+    def __init__(self, with_time_seeker):
     	super(Artefact_rejection_viewer, self).__init__()
+        self.with_time_seeker = with_time_seeker
         self.initUI()
 
     def initUI(self, params = None, optionParams = None):
 
         if params == None:
             self.params = {
-            	'data_repo'		: './data_node/',
+            	'data_repo'		: './../data_node/',
             	'sub_base_name' : ['_0_EEGBrut', '_Concat_EEGBrut'],
         		'subjects'		: ['P03', 'P04', 'P05', 'P06', 'P07', 'P08', 'P09', 'P10', 'P11', 'P12', 'P13', 'P14', 'P15', 'P16', 'P17', 'P18', 'P19', 'P21', 'S01'],
         		'selected_sub'	: 'P03',
@@ -114,17 +124,17 @@ class Artefact_rejection_viewer(QtGui.QWidget):
         		}
         if optionParams == None:
         	self.optionParams = {
-        		'filt_f0'		: 0.05,	#Hz
-        		'filt_f1'		: 30,		#Hz
-        		'Ampl_th'		: 200,	#micro volt
-        		'Sampl_th'		: 4,		#sample
-        		'win_size'		: 30, #s
+        		'filt_f0'		: 0.05,    #Hz
+        		'filt_f1'		: 30.,      #Hz
+        		'Ampl_th'		: 200,     #micro volt
+        		'Sampl_th'		: 4,       #sample
+        		'win_size'		: 30,      #s
         		'win_step'		: 1./2,
         		'gain' 			: 1,
         		'base_offset'	: 0,
         		'chan_offset'	: 300,
         		'auto_detect'	: True,
-        		'filter'		: True,
+        		'filter'		: False,
         		'remove_avRef'	: True,
         		'EEG_chan_ref'	: ['F3', 'Fz', 'F4', 'T3', 'C3', 'Cz', 'C4', 'T4', 'P3', 'Pz', 'P4', 'O1', 'O2'],
         	}
@@ -132,11 +142,16 @@ class Artefact_rejection_viewer(QtGui.QWidget):
         self.dialogArtefEdit = Artefact_DialogWindow(self)
 
         ## Main Window and Layout
-        self.main_win = QtGui.QWidget()
-        self.main_win.setWindowTitle('EEG Artefact Viewer')
-        self.main_win.resize(1200, 1000)
+        # self.main_win = QtGui.QWidget()
+        # self.main_win.setWindowTitle('EEG Artefact Viewer')
+        # self.main_win.resize(1200, 1000)
+        # self.main_layout = QtGui.QGridLayout()  
+        #self.main_win.setLayout(self.main_layout)
+       
+        self.setWindowTitle('EEG Artefact Viewer')
+        self.resize(1200, 1000)
         self.main_layout = QtGui.QGridLayout()  
-        self.main_win.setLayout(self.main_layout)
+        self.setLayout(self.main_layout)
 
         ## Graph Properties Options
         self.prop_layout = QtGui.QHBoxLayout()
@@ -165,26 +180,42 @@ class Artefact_rejection_viewer(QtGui.QWidget):
 
         ## EEG Grapfics window
         self.gWin = pg.GraphicsWindow()
-        #~ self.label = pg.LabelItem(justify='right')
+        #~ self.label = pg.LabelItem(justify = 'right')
         #~ self.gWin.addItem(self.label)
-        #axisEEG = EEGAxis(sampling_rate= self.params['fe'], eegView_win_size=self.params['win_size'], orientation='bottom')
-        #axisEEG = date_EEG_axis(orientation='bottom')
+        #axisEEG = EEGAxis(sampling_rate= self.params['fe'], eegView_win_size=self.params['win_size'], orientation = 'bottom')
+        #axisEEG = date_EEG_axis(orientation = 'bottom')
         self.EEG_axis = date_EEG_axis(orientation='bottom', dataFrame_index=[])
         self.eeg_plot = self.gWin.addPlot(row=1, col=0, axisItems={'bottom': self.EEG_axis})  #eeg_plot and feat_plot are viewbox
         self.eeg_plot.invertY()
         #self.eeg_plot.setMouseEnabled(x=True, y=True)
         ## EEG init params
         self.nb_win_EEG_sample = self.optionParams['win_size'] * self.params['fe']
-        self.EEG_Xpos = np.round(self.nb_win_EEG_sample/2)
+        self.EEG_Xpos = 0#np.round(self.nb_win_EEG_sample/2)
 
         # Add the graphic window to the view. But maybe we should not ??
         self.main_layout.addWidget(self.gWin, 1,0)
+
+        if self.with_time_seeker:
+            self.timeseeker = TimeSeeker(show_slider = False, show_spinbox = False, show_label = False)
+            self.main_layout.addWidget(self.timeseeker)
+            self.timeseeker.set_start_stop(0., 100000.) #max sample number
+            self.timeseeker.time_changed.connect(self.seek)
+            self.timeseeker.fast_time_changed.connect(self.fast_seek)
 
         # Pre-plot data
         self.loadSubjectdata()
         self.update_eeg_plots()
 
-        self.main_win.show()
+        #proxy = pg.SignalProxy(self.eeg_plot.keyPressEvent, rateLimit=60, slot = self.KeyEvent)
+        self.show()
+        #self.main_win.show()
+
+    def set_params(params = None):
+        print "todo"
+
+    def keyPressEvent(self, ev):
+        print 'ici'
+        print ev.key()
 
     def loadSubjectdata(self):
     	filename = self.params['selected_sub']+self.params['sub_base_name'][1]+'.h5'
@@ -206,18 +237,41 @@ class Artefact_rejection_viewer(QtGui.QWidget):
     	gain = self.optionParams['gain']
     	nb_chan = len(self.params['all_chan'])
 
-    	x0 = np.int(self.EEG_Xpos - self.nb_win_EEG_sample/2)
-    	x1 = np.int(self.EEG_Xpos + self.nb_win_EEG_sample/2)
+    	x0 = np.int(self.EEG_Xpos)# - self.nb_win_EEG_sample/2)
+    	x1 = np.int(self.EEG_Xpos + self.nb_win_EEG_sample) #/2
     	print "x0 : ", x0
     	print "x1 : ", x1
     	eeg_win = np.empty((x1-x0))
+        #eeg_win_filt = eeg_win 
     	## set EEG Axis dates
-    	self.EEG_axis.setDataFrameIndex(self.eeg_raw_df.index[x0:x1])
+    	#self.EEG_axis.setDataFrameIndex(self.eeg_raw_df.index[x0:x1])
     	## EEG Lines plots
     	self.eeg_plot.clear()
+        self.EEG_axis.setDataFrameIndex(self.eeg_raw_df.index[x0:x1])
+
+        #b, a = signal.butter(self.optionParams['filt_f0'], 100, 'low', analog=True)
+
     	for i, name_chan in enumerate(self.params['all_chan']):
-    		eeg_win = self.eeg_raw_df[name_chan][x0:x1].values * gain + (nb_chan - i)*chan_offset
-    		self.eeg_plot.plot(eeg_win, pen=(i, nb_chan*1.3 ))
+            eeg_win = self.eeg_raw_df[name_chan][x0:x1].values #* gain + (nb_chan - i)*chan_offset
+            if self.optionParams['filter']:
+                print "f0 : ", self.optionParams['filt_f0']
+                print "f1 :", self.optionParams['filt_f1']
+                print "type f0 : ", type(self.optionParams['filt_f0'])
+                print "type f1 :", type(self.optionParams['filt_f1'])
+                b, a = signal.butter(4, [self.optionParams['filt_f0']/128, self.optionParams['filt_f1']/128], btype='band')
+                # bp = signal.firwin(4, [self.optionParams['filt_f0'], self.optionParams['filt_f1']])
+                # numpy.convolve(eeg_win, bp)
+                eeg_win = signal.filtfilt(b, a, eeg_win)
+            eeg_win = eeg_win * gain + (nb_chan - i)*chan_offset
+            self.eeg_plot.plot(eeg_win, pen=(i, nb_chan*1.3 ))
+
+    def refresh(self, fast = False):
+        print "self.timeseeker.t : ", self.timeseeker.t
+        print "self.t : ", self.t
+        print " self.timeseeker.step_size : ", self.timeseeker.step_size
+        self.EEG_Xpos = self.timeseeker.t * self.params['fe']
+        self.update_eeg_plots()
+        self.is_refreshing = False
 
     def change_subject(self, text):
         self.params['selected_sub'] = str(text)
@@ -234,26 +288,31 @@ class Artefact_rejection_viewer(QtGui.QWidget):
 
     def on_valid_dialogWindow(self):
         print 'validation dialogWindow'
-        self.optionParams['Ampl_th'] = int(self.dialogArtefEdit.artf_ampl_ql.text())
-        self.optionParams['Sampl_th'] = int(self.dialogArtefEdit.artf_sampl_ql.text())
-        self.optionParams['filt_f0'] = int(self.dialogArtefEdit.filt_f0_ql.text())
-        self.optionParams['filt_f1'] = int(self.dialogArtefEdit.filt_f1_ql.text())
-        
         self.optionParams['auto_detect'] = self.dialogArtefEdit.artf_checkBox.isChecked()
         self.optionParams['filter'] = self.dialogArtefEdit.filt_checkBox.isChecked()
+        self.optionParams['win_size'] = self.dialogArtefEdit.win_size_ql.text()
         #self.optionParams['remove_avRef'] = self.dialogArtefEdit.?.isChecked()
 
+        self.optionParams['Ampl_th'] = int(self.dialogArtefEdit.artf_ampl_ql.text())
+        self.optionParams['Sampl_th'] = int(self.dialogArtefEdit.artf_sampl_ql.text())
+        self.optionParams['filt_f0'] = float(self.dialogArtefEdit.filt_f0_ql.text())
+        self.optionParams['filt_f1'] = float(self.dialogArtefEdit.filt_f1_ql.text())
+        self.optionParams['win_size'] = int(self.dialogArtefEdit.win_size_ql.text())
+        
         self.dialogArtefEdit.close()
         self.update_eeg_plots()
 
-
+    def keyPressEvent(self, ev):
+        print 'ici'
+        print ev.key()
 
 def main():
-    data_repo = './data/'
+    data_repo = './../data/'
     #~ if (sys.flags.interactive != 1) or not hasattr(QtCore, 'PYQT_VERSION'):
         #~ QtGui.QApplication.instance().exec_()
+    with_time_seeker = True
     app = QtGui.QApplication(sys.argv)
-    ex = Artefact_rejection_viewer()
+    ex = Artefact_rejection_viewer(with_time_seeker)
     sys.exit(app.exec_())
     
     
