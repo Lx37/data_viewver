@@ -13,6 +13,8 @@ import pyqtgraph as pg
 from PyQt4.QtCore import *
 from PyQt4.QtGui import *
 
+from pyqtgraph.Qt import QtGui, QtCore
+
 import time
 
 
@@ -252,6 +254,7 @@ class ViewerBase(QWidget):
         self.need_refresh.emit(False)
     
     def refresh(self, fast = False):
+        print "fast :", fast
         # Implement in subclass
         if fast:
             print 'fast refresh'
@@ -267,3 +270,101 @@ class ViewerBase(QWidget):
             self.delay_timer.setInterval(interval)
             self.delay_timer.start()
         
+
+
+class MyViewBox(pg.ViewBox):
+    clicked = pyqtSignal()
+    doubleclicked = pyqtSignal()
+    #~ zoom_in = pyqtSignal()
+    #~ zoom_out = pyqtSignal()
+    #~ fast_zoom_in = pyqtSignal()
+    #~ fast_zoom_out = pyqtSignal()
+    zoom = pyqtSignal(float)
+    def __init__(self, *args, **kwds):
+        pg.ViewBox.__init__(self, *args, **kwds)
+    def mouseClickEvent(self, ev):
+        self.clicked.emit()
+        ev.accept()
+    def mouseDoubleClickEvent(self, ev):
+        self.doubleclicked.emit()
+        ev.accept()
+    def mouseDragEvent(self, ev):
+        ev.ignore()
+    def wheelEvent(self, ev):
+        if ev.modifiers() ==  Qt.ControlModifier:
+            z = 10 if ev.delta()>0 else 1/10.
+        else:
+            z = 1.3 if ev.delta()>0 else 1/1.3
+        self.zoom.emit(z)
+        ev.accept()
+
+
+class Artefact_DialogWindow(QtGui.QDialog):
+    def __init__(self, parent=None):
+        super(Artefact_DialogWindow, self).__init__(parent)
+        self.parent = parent
+        #self.params = params
+        #self.optionParams = optionParams
+
+        ## TODO : with Pyqtgraph create the option window nicely
+        self.buttonBox = QtGui.QDialogButtonBox(self)
+        self.buttonBox.setOrientation(QtCore.Qt.Horizontal)
+        self.resize(500, 600) # (X,Y)
+        #~ self.buttonBox.setStandardButtons(QtGui.QDialogButtonBox.Cancel|QtGui.QDialogButtonBox.Ok)
+        self.title_txt = QtGui.QLabel('General options', self)
+        self.title_txt.move(200, 10)
+        self.advice_txt = QtGui.QLabel('please enter only number or it will crash.', self)
+        self.advice_txt.move(150, 30)
+        self.advice_txt.resize(300,30)
+
+        # self.verticalLayout = QtGui.QVBoxLayout(self)
+        # self.verticalLayout.addWidget(self.buttonBox)
+         
+        ## Automated artefact detection 
+        self.artf_checkBox = QtGui.QCheckBox('Automatic artefact rejection : ', self)
+        self.artf_checkBox.setChecked(self.parent.optionParams['auto_detect'])
+        self.artf_checkBox.move(10, 70)
+        self.artf_checkBox.resize(300,30)
+        self.artf_ampl_txt = QtGui.QLabel('Microvolt threshold : ', self)
+        self.artf_ampl_txt.move(40, 110)
+        self.artf_ampl_txt.resize(150,30)
+        self.artf_ampl_ql = QtGui.QLineEdit(str(self.parent.optionParams['Ampl_th']), self)
+        self.artf_ampl_ql.move(200, 110)
+        self.artf_sampl_txt = QtGui.QLabel('Sample threshold : ', self)
+        self.artf_sampl_txt.move(40, 150)
+        self.artf_sampl_txt.resize(150,30)
+        self.artf_sampl_ql = QtGui.QLineEdit(str(self.parent.optionParams['Sampl_th']), self)
+        self.artf_sampl_ql.move(200, 150)
+
+        ## Filtering 
+        self.filt_checkBox = QtGui.QCheckBox('Filter EEG channel (only on view) : ', self)
+        self.filt_checkBox.setChecked(self.parent.optionParams['filter'])
+        self.filt_checkBox.move(10, 220)  #y+150
+        self.filt_checkBox.resize(300,30)
+        self.filt_txt1 = QtGui.QLabel('Low frequency (Hz) : ', self)
+        self.filt_txt1.move(40, 260)
+        self.filt_txt1.resize(150,30)
+        self.filt_f0_ql = QtGui.QLineEdit(str(self.parent.optionParams['filt_f0']), self)
+        self.filt_f0_ql.move(200, 260)
+        self.filt_txt2 = QtGui.QLabel('High frequency (Hz) : ', self)
+        self.filt_txt2.move(40, 300)
+        self.filt_f1_ql = QtGui.QLineEdit(str(self.parent.optionParams['filt_f1']), self)
+        self.filt_f1_ql.move(200, 300)
+
+        ## Average Ref 
+        self.rmRef_checkBox = QtGui.QCheckBox('Remove EEG average ref (only on view) : ', self)
+        self.rmRef_checkBox.setChecked(self.parent.optionParams['filter'])
+        self.rmRef_checkBox.move(10, 350)
+
+        ## view size
+        #self.win_txt1 = QtGui.QLabel('Size (in sec) of the signal view : ', self)
+        #self.win_txt1.move(10, 400)
+        #self.win_txt1.resize(300,30)
+        #self.win_size_ql = QtGui.QLineEdit(str(self.parent.optionParams['win_size']), self)
+        #self.win_size_ql.move(250, 400)
+
+        ## Ok button
+        self.OkButton = QtGui.QPushButton("Ok", self)
+        self.OkButton.move(400, 500)
+        # self.verticalLayout.addWidget(self.OkButton)
+        self.connect(self.OkButton, QtCore.SIGNAL("clicked()"), self.parent.on_valid_dialogWindow)
