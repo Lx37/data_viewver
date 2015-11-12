@@ -71,6 +71,7 @@ class Artefact_rejection_viewer(ViewerBase):
         		'filter'		: False,
         		'remove_avRef'	: False,
         		'EEG_chan_ref'	: ['F3', 'Fz', 'F4', 'T3', 'C3', 'Cz', 'C4', 'T4', 'P3', 'Pz', 'P4', 'O1', 'O2'],
+                'region_size'   : 768,      #samples = 3s ici
         	}
 
         self.dialogArtefEdit = Artefact_DialogWindow(self)      
@@ -163,37 +164,30 @@ class Artefact_rejection_viewer(ViewerBase):
         #self.vLine = []
         self.auto_ref_artf = np.array([])
         self.added_lines = [] 
-        self.regionLines = []
+        self.manual_ref_artf = np.array([])
+        self.added_regions = []
+        self.existingArtefile = False
 
         # TODO fin du init.
 
-
         # Pre-plot data
+        self.eeg_store=False
         self.loadSubjectdata()
-        if self.optionParams['auto_detect']:
-            self.auto_detect_artef()
-
-        #self.update_eeg_plots()
-
-        #proxy = pg.SignalProxy(self.eeg_plot.keyPressEvent, rateLimit=60, slot = self.KeyEvent)
+        
         self.show()
-        #self.main_win.show()
-
+        
     def set_params(params = None):
         print "todo"
-
-    def keyPressEvent(self, ev):
-        print 'ici'
-        print ev.key()
 
     def loadSubjectdata(self):
     	filename = self.params['selected_sub'] + self.params['sub_base_name'][1] + '.h5'
     	file_path = join(self.params['data_repo'], self.params['selected_sub'], filename )
-    	print not isfile(file_path) 
     	if not isfile(file_path):
     		filename = self.params['selected_sub'] + self.params['sub_base_name'][0] + '.h5'
     		file_path = join(self.params['data_repo'], self.params['selected_sub'] , filename)
     	print "load subject file : ", file_path
+        if self.eeg_store: #if one file was already open, close it
+            self.eeg_store.close()
     	self.eeg_store = pd.HDFStore(file_path) #open
     	self.eeg_raw_df = self.eeg_store.eeg_raw_df #read data
     	#TODO : init AllChan by sub because not the same number (cf temoin..)
@@ -219,23 +213,27 @@ class Artefact_rejection_viewer(ViewerBase):
             curve = self.physio_plot.plot([np.nan],  pen=(i, nb_chan*1.3 ))
             self.other_curves.append(curve)
 
-        self.get_ref()
-        self.refresh()
-
-        #load artefact dataframe
+        #load artefact dataframe if exits or create it
         filename = self.params['selected_sub'] + self.params['sub_base_name'][2] + '.h5'
         file_path = join(self.params['data_repo'], self.params['selected_sub'] , filename)
-        #if isfile(file_path):
-        self.artf_raw_df = pd.HDFStore(file_path) #Open if exits, create if not
-        #else:
-        #    self.artf_raw_df = None
+        self.artf_raw_df = pd.HDFStore(file_path)
+        
+        if not self.artf_raw_df['auto'].empty: #init to data from file
+            self.existingArtefile = True
+            self.auto_ref_artf =  np.transpose(self.artf_raw_df['auto'].values)
+            print "artef file found. data are : ", self.auto_ref_artf 
+            print np.shape(self.auto_ref_artf)
 
+        self.get_ref()
+        if self.optionParams['auto_detect']:
+            self.auto_detect_artef()
+            
+        self.refresh()
 
     def get_ref(self):
         print 'start computing av_ref'
         self.eeg_av_ref = np.average(self.eeg_raw_df[self.optionParams['EEG_chan_ref']].values, axis = 1)
-        print "shape eeg_av_ref : ", np.shape(self.eeg_av_ref)
-
+        #print "shape eeg_av_ref : ", np.shape(self.eeg_av_ref)
 
     def refresh(self, fast = False):
         print "self.time : ", self.timeseeker.t
@@ -251,9 +249,6 @@ class Artefact_rejection_viewer(ViewerBase):
         nb_chan = len(self.params['eeg_chan'])
         fe = self.params['fe']
 
-        #if self.optionParams['remove_avRef']:
-        #    eeg_av_ref = np.average(self.eeg_raw_df[self.optionParams['EEG_chan_ref']].iloc[x0:x1].values, axis = 1)
-        
         for i, name_chan in enumerate(self.params['eeg_chan']):
             eeg_win = self.eeg_raw_df[name_chan].iloc[x0:x1].values
 
@@ -276,15 +271,8 @@ class Artefact_rejection_viewer(ViewerBase):
             other_win = self.eeg_raw_df[name_chan].iloc[x0:x1].values * gain + (nb_chan - i)*physio_offset
             self.other_curves[i].setData(np.arange(x0, x1), other_win)
 
-        # if self.vLine:
-        #     for i,j in enumerate(self.added_lines): #removes all vlines.
-        #         self.eeg_plot.removeItem(j)
-        #     for i,j in enumerate(self.vLine): # add the vline visible in window.
-        #         if (x0 <= j.value() <= x1):
-        #             self.eeg_plot.addItem(j)
-        #             self.added_lines.append(j)
-
-        if self.optionParams['auto_detect']:
+        # show a line for each artef auto detected
+        if self.optionParams['auto_detect'] or self.existingArtefile == True:
             for i,j in enumerate(self.added_lines): #removes all vlines.
                 self.eeg_plot.removeItem(j)
             for x in np.nditer(self.auto_ref_artf[0]):
@@ -292,6 +280,23 @@ class Artefact_rejection_viewer(ViewerBase):
                     vLine = pg.InfiniteLine(pos=x, angle=90, movable=False)
                     self.eeg_plot.addItem(vLine)
                     self.added_lines.append(vLine)
+
+        #show if a region is defined inside the window
+        if self.added_regions:
+            for i,j in enumerate(self.added_regions): 
+                v1, v2 = j.getRegion()
+                print v1, v2
+                if (v1 <= x0 or v1 >= x1) or (v2 <= x0 or v2 >= x1):
+                    self.eeg_plot.removeItem(j)
+                    self.manual_ref_artf = [self.manual_ref_artf, [np.int(v1),np.int(v2)]] #TODO : add code ??
+        print "self.manual_ref_artf : ", self.manual_ref_artf
+        print "and size : ", np.shape(self.manual_ref_artf)
+        if self.manual_ref_artf:
+            for x,y in np.nditer(self.manual_ref_artf):
+                if (x0 <= x <= x1) and (x0 <= y <= x1):
+                    region = pg.LinearRegionItem(values = [x, y])
+                    self.eeg_plot.addItem(region)
+                    self.added_regions.append(region)
 
 
 
@@ -305,23 +310,18 @@ class Artefact_rejection_viewer(ViewerBase):
         #self.update_eeg_plots()
 
     def auto_detect_artef(self):
-        print 'debut artef auto'
-        #self.vLine = []
+        self.existingArtefile = False
         self.auto_ref_artf = np.array([])
         amp_th = self.optionParams['Ampl_th']
         samp_th = self.optionParams['Sampl_th']
         #TODO pour le moment que sur 2 echantillons et sur ref moy.
         ref_diff = np.ediff1d(self.eeg_av_ref)
         self.auto_ref_artf = np.where(np.abs(ref_diff) > amp_th)
-        print "nb artefact found : ", np.shape(self.auto_ref_artf)[1]
+        print "Found ", np.shape(self.auto_ref_artf)[1], " artifacts."
+        self.refresh()
 
-        #for ii in range(np.shape(auto_ref_artf)[1]):
-        #    print "auto_ref_artf[0][ii] : ", auto_ref_artf[0][ii]
-        #    self.vLine.append(pg.InfiniteLine(pos=auto_ref_artf[0][ii], angle=90, movable=False))
-        
-        #TODO
-        #self.artf_raw_df = None
-        print 'fin artef auto'
+    def rm_auto_detect_artef(self):
+        self.auto_ref_artf = np.array([])
         self.refresh()
 
     def on_valid_dialogWindow(self):
@@ -340,6 +340,8 @@ class Artefact_rejection_viewer(ViewerBase):
         self.dialogArtefEdit.close()
         if self.optionParams['auto_detect']:
             self.auto_detect_artef()
+        else:
+            self.rm_auto_detect_artef()
         self.refresh()
 
     def keyPressEvent(self, ev):
@@ -352,11 +354,19 @@ class Artefact_rejection_viewer(ViewerBase):
             self.timeseeker.t = self.timeseeker.t - self.timeseeker.step_size
             self.refresh()
 
+        if ev.key() == 49: #1
+            print 'touche 1'
+            x0 = np.int(self.EEG_Xpos + self.nb_win_EEG_sample/2 - self.optionParams['region_size'])
+            x1 = np.int(x0 + 2*self.optionParams['region_size'])
+            region = pg.LinearRegionItem(values = [x0, x1])
+            self.added_regions.append(region)
+            self.eeg_plot.addItem(region)
+
     def on_push_Edit_Button(self):  
         self.dialogArtefEdit.exec_()
 
     def on_push_Save_Button(self):
-        print "Save Pushed"    
+        print "Save"    
         self.update_artf_raw_df()
         #save artefacts with infos
 
@@ -372,19 +382,14 @@ class Artefact_rejection_viewer(ViewerBase):
             self.artf_raw_df['auto_info'] = pd.Series({'Ampl_th': self.optionParams['Ampl_th'],
                                                        'Sampl_th' : self.optionParams['Sampl_th']})
 
-        if self.regionLines:
+        if self.manual_ref_artf:
             print "TODO"
 
-
-
     def closeEvent(self, ev):
-        #TODO
-        #save and close artefact files
-        print "fermeture"
+        print 'Close'
         self.update_artf_raw_df()
         self.artf_raw_df.close()
         self.eeg_store.close()
-
 
 def main():
     data_repo = './../data/'
@@ -394,7 +399,6 @@ def main():
     app = QtGui.QApplication(sys.argv)
     ex = Artefact_rejection_viewer(with_time_seeker)
     sys.exit(app.exec_())
-    
 
 if __name__ == '__main__':
     main() 
